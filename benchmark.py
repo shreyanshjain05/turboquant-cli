@@ -133,9 +133,24 @@ def extract_kv_from_huggingface(model_id: str, prompt: str) -> dict:
 
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 
+    from transformers import AutoConfig
+    config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+    if getattr(config, "rope_scaling", None) is not None:
+        rs = config.rope_scaling
+        scaling_type = rs.get("rope_type", rs.get("type", None))
+        if scaling_type in ("default", None):
+            config.rope_scaling = None
+        else:
+            if "type" not in rs:
+                rs["type"] = scaling_type
+            if "rope_type" not in rs:
+                rs["rope_type"] = scaling_type
+            config.rope_scaling = rs
+
     # Load in FP32 for accurate baseline (no quantization during benchmark)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
+        config=config,
         dtype=torch.float32,
         device_map="auto",
         trust_remote_code=True,
