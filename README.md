@@ -48,7 +48,7 @@ turboquant/
 ### Step 1 — Install Ollama
 
 ```bash
-# Download from https://ollama.ai or via Homebrew:
+# Download from https://ollama.com or via Homebrew:
 brew install ollama
 
 # Start the Ollama server
@@ -59,7 +59,7 @@ ollama serve
 
 ```bash
 # In a new terminal:
-ollama pull llama3
+ollama pull llama3.1:8b
 
 # Verify it's available:
 ollama list
@@ -85,14 +85,16 @@ pip install torch torchvision torchaudio
 python main.py
 ```
 
-That's it. TurboQuant activates automatically.
+That's it. With the Ollama backend, TurboQuant provides a chat interface
+and projects memory savings. For **actual KV cache compression**, use the
+HuggingFace backend (see below).
 
 ---
 
 ## CLI Options
 
 ```bash
-# Default: Ollama + Llama 3 + 4-bit TurboQuant
+# Default: Ollama + Llama 3 (chat interface, no KV compression)
 python main.py
 
 # Use a different Ollama model
@@ -192,19 +194,21 @@ python benchmark.py --real \
 
 ## Understanding KV Cache Testing: Ollama vs HuggingFace
 
-When using TurboQuant, you have two backend options: **Ollama** and **HuggingFace**. While both work perfectly for regular chatting and inferencing, benchmarking the mathematical loss of extreme KV compression requires access to the model's raw memory.
+TurboQuant has two backend options: **Ollama** and **HuggingFace**. They offer very different levels of integration.
 
-### The Ollama Limitation
-Ollama is a compiled standalone server built on top of `llama.cpp`. We interact with it via a REST API. Because it acts as a black box that prioritizes ease-of-use and speed, **Ollama does not expose its raw internal memory tensors**.
-* **Chatting:** TurboQuant can smoothly wrap the Ollama interface and track token counts to give you *projections* of memory saved.
-* **Benchmarking:** We cannot extract the actual dynamically generated Key-Value tensors from Ollama to run our compression mathematics on them. Running `benchmark.py --real` on Ollama will default back to the synthetic test.
+### Ollama Backend (Chat Only)
+Ollama is a compiled standalone server built on top of `llama.cpp`. We interact with it via a REST API. Because it acts as a black box, **Ollama does not expose its raw KV cache tensors**.
+* **What TurboQuant does:** Wraps the Ollama chat interface and tracks token counts to give you *theoretical projections* of how much memory TurboQuant would save if applied to the KV cache.
+* **What TurboQuant cannot do:** Actually compress Ollama's internal KV cache. The memory savings are projections, not real compression. Ollama handles its own weight quantization (Q4_0, Q4_K_M, etc.) natively.
+* **Benchmarking:** Running `benchmark.py --real` on Ollama will fall back to the synthetic test since we can't extract real KV tensors.
 
-### The HuggingFace Solution
-To calculate exact cosine similarity and mathematical compression loss on **real** data, you must use the HuggingFace backend for benchmarking. 
-* HuggingFace runs directly in Python, giving TurboQuant the ability to attach **hooks** to every attention layer.
-* When a test sentence is fed into the model, TurboQuant intercepts the resulting KV Cache memory exactly as the model naturally generates it, applies the mathematical compression (down to 3 or 4 bits), and compares the result against the original 16-bit float tensor to measure exactly how near-lossless the algorithm is.
+### HuggingFace Backend (Full KV Compression)
+The HuggingFace backend is where TurboQuant **actually compresses the KV cache**.
+* HuggingFace runs directly in Python, giving TurboQuant the ability to attach `forward_hooks` to every attention layer.
+* Keys and Values are intercepted the instant they are computed, compressed in-place using the two-stage pipeline (TurboQuantMSE + QJL), and decompressed transparently before attention score calculation.
+* This is real, measurable compression — run `/stats` during chat to see live memory reduction.
 
-If you are only using TurboQuant to save RAM while chatting, Ollama is highly recommended for its out-of-the-box metal acceleration. If you are a researcher wanting to verify the Google paper's claims on your own machine, use the HuggingFace backend with the `--real` benchmarking flag!
+For chatting on Apple Silicon, Ollama gives you great out-of-the-box performance. For **verifiable KV cache compression** and benchmarking, use the HuggingFace backend.
 
 ---
 
@@ -212,13 +216,31 @@ If you are only using TurboQuant to save RAM while chatting, Ollama is highly re
 
 | Model | Pull Command | Size | Speed | Quality |
 |-------|-------------|------|-------|---------|
-| Llama 3 8B | `ollama pull llama3` | ~4.7GB | Medium | ⭐⭐⭐⭐⭐ |
+| Llama 3 8B | `ollama pull llama3.1:8b` | ~4.7GB | Medium | ⭐⭐⭐⭐⭐ |
 | Mistral 7B | `ollama pull mistral` | ~4.1GB | Medium | ⭐⭐⭐⭐ |
 | Phi-3 Mini | `ollama pull phi3` | ~2.3GB | Fast | ⭐⭐⭐⭐ |
 | Gemma 2 2B | `ollama pull gemma2:2b` | ~1.6GB | Very fast | ⭐⭐⭐ |
 
-With TurboQuant's KV compression, all of these run comfortably
-in 8GB unified memory even at extended context lengths.
+These models run comfortably in 8GB unified memory thanks to
+Ollama's built-in weight quantization. For actual TurboQuant KV
+cache compression, use the HuggingFace backend with a model
+that fits in your GPU memory.
+
+---
+
+## ☕ Support This Project
+
+I'm a student building TurboQuant on an 8GB MacBook - the same machine I use for lectures. Every benchmark, every experiment, every line of code runs on consumer hardware because that's all I have.
+
+If this project helped you understand KV cache compression, saved you time, or you just think open-source research tooling matters - consider buying me a coffee. Every contribution goes directly toward upgrading my hardware so I can test on larger models and keep everything free.
+
+<a href="https://ko-fi.com/shreyanshjain05" target="_blank">
+  <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" />
+</a>
+
+**[☕ ko-fi.com/shreyanshjain05](https://ko-fi.com/shreyanshjain05)**
+
+Even a small tip means the world. Thank you! 🙏
 
 ---
 
