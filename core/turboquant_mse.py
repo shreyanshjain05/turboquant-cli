@@ -24,9 +24,6 @@ import numpy as np
 import torch
 from dataclasses import dataclass
 from typing import Tuple
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from core.rotation import RotationMatrix
 
 

@@ -107,8 +107,6 @@ def parse_args():
 
 def setup_engine(args):
     """Load model and create inference engine based on CLI args."""
-    import sys, os
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from config import CONFIG
     from model.loader import load_huggingface_model, load_ollama_model
     from model.inference import HuggingFaceInference, OllamaInference
@@ -211,8 +209,27 @@ def chat_loop(engine, backend: str):
 
         try:
             if isinstance(engine, HuggingFaceInference):
-                # Build prompt with system instruction
-                prompt = f"[INST] <<SYS>>\n{SYSTEM_PROMPT}\n<</SYS>>\n\n{user_input} [/INST]"
+                # Build prompt using the model's native chat template
+                # This auto-detects the correct format (Llama, Phi, Gemma, etc.)
+                tokenizer = engine.tokenizer
+                if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template:
+                    messages = [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_input},
+                    ]
+                    try:
+                        prompt = tokenizer.apply_chat_template(
+                            messages, tokenize=False, add_generation_prompt=True,
+                        )
+                    except Exception:
+                        # Fallback if chat_template doesn't support system role
+                        messages = [{"role": "user", "content": user_input}]
+                        prompt = tokenizer.apply_chat_template(
+                            messages, tokenize=False, add_generation_prompt=True,
+                        )
+                else:
+                    # Base models without chat template — plain prompt
+                    prompt = f"{user_input}\n"
                 for token in engine.generate(prompt, stream=True):
                     print(token, end="", flush=True)
 

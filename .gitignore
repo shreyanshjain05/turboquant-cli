@@ -1,2 +1,36 @@
-__pycache__
-.venv
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# HuggingFace cache (don't commit model weights)
+*.safetensors
+*.bin
+*.pt
+*.onnx
+
+# Logs & temp
+*.log
+tmp/

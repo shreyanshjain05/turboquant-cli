@@ -135,10 +135,10 @@ During chat, type:
 Input KV vector x (FP16, 128-dim)
           │
           ▼
-    ┌─────────────┐
+    ┌────────────────┐
     │  TurboQuantMSE │  Stage 1: random rotation Π → normalise →
-    │  (3 bits)   │  Lloyd-Max quantize on Beta distribution
-    └─────────────┘  → X_Base (zero overhead, near-optimal MSE)
+    │  (3 bits)      │  Lloyd-Max quantize on Beta distribution
+    └────────────────┘  → X_Base (zero overhead, near-optimal MSE)
           │
           ▼  residual r = x - X_Base
           │

@@ -1,6 +1,3 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from core.rotation import RotationMatrix
 from core.turboquant_mse import TurboQuantMSE, TurboQuantMSEState
 from core.qjl import QJL, QJLState

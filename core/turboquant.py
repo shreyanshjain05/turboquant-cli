@@ -30,9 +30,6 @@ import torch
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from core.turboquant_mse import TurboQuantMSE, TurboQuantMSEState
 from core.qjl import QJL, QJLState
 

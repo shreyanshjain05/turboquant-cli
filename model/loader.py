@@ -127,6 +127,35 @@ def load_huggingface_model(
         else:
             model_kwargs["device_map"] = {"": "cpu"}
 
+    # ── Fix rope_scaling compatibility ──────────────────────────────
+    # Newer transformers (≥4.45) populates rope_scaling={"rope_type": "default"}
+    # where older model custom code (e.g. Phi-3) expects rope_scaling=None for
+    # standard RoPE. Additionally, the key was renamed "type" → "rope_type".
+    # We fix both issues here by pre-loading the config.
+    from transformers import AutoConfig
+    config = AutoConfig.from_pretrained(
+        model_id, token=hf_token, trust_remote_code=True,
+    )
+    if getattr(config, "rope_scaling", None) is not None:
+        rs = config.rope_scaling
+        scaling_type = rs.get("rope_type", rs.get("type", None))
+
+        if scaling_type in ("default", None):
+            # "default" means no actual scaling — clear it so custom model code
+            # that doesn't recognise "default" uses standard RoPE instead.
+            config.rope_scaling = None
+            logger.info("Cleared rope_scaling (type='default' → None for standard RoPE)")
+        else:
+            # Real scaling (e.g. "longrope", "su") — ensure both key names exist
+            if "type" not in rs:
+                rs["type"] = scaling_type
+            if "rope_type" not in rs:
+                rs["rope_type"] = scaling_type
+            config.rope_scaling = rs
+            logger.info(f"Patched rope_scaling: ensured both keys for type='{scaling_type}'")
+    model_kwargs["config"] = config
+    # ────────────────────────────────────────────────────────────────
+
     model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
     model.eval()
 
