@@ -32,7 +32,7 @@ class QJLState:
     """Compressed residual from QJL Stage 2."""
     signs: np.ndarray        # Sign bits of JL-projected residual, shape (N, n_proj)
     projection: np.ndarray   # JL projection matrix, shape (n_proj, dim)
-    gamma: float             # Scaling factor for inner product estimation
+    gamma: np.ndarray        # Scaling factor per vector, shape (N, 1)
     n_proj: int
     dim: int
 
@@ -78,14 +78,15 @@ class QJL:
     def projection(self) -> np.ndarray:
         """
         JL projection matrix: shape (n_proj, dim).
-        Entries are ±1/√n_proj (Rademacher distribution).
+        Entries drawn from standard normal (Gaussian) as required for rigorous 
+        QJL variance bounds, scaled by 1/√n_proj.
         Lazy init — built once, reused for all vectors.
         """
         if self._projection is None:
             rng = np.random.default_rng(self.seed + 1)   # offset from rotation seed
-            # Rademacher: entries ±1 with equal probability
-            signs = rng.choice([-1.0, 1.0], size=(self.n_proj, self.dim))
-            self._projection = (signs / np.sqrt(self.n_proj)).astype(np.float32)
+            # Gaussian matrix S as per paper's Definition 1
+            S = rng.standard_normal((self.n_proj, self.dim))
+            self._projection = (S / np.sqrt(self.n_proj)).astype(np.float32)
         return self._projection
 
     def compress(self, residual: np.ndarray) -> QJLState:
@@ -107,9 +108,9 @@ class QJL:
         signs = np.sign(projected).astype(np.int8)
         signs[signs == 0] = 1   # handle exact zero edge case
 
-        # Gamma: scaling factor that calibrates the estimator
-        # Derived from the expected magnitude of the residual
-        gamma = float(np.mean(np.abs(projected)))
+        # Gamma: per-vector scaling factor that calibrates the estimator
+        # Derived from the mean magnitude of the residual projections
+        gamma = np.mean(np.abs(projected), axis=1, keepdims=True).astype(np.float32)
 
         return QJLState(
             signs=signs,
@@ -142,9 +143,9 @@ class QJL:
         # Project query into JL space: (N_q, n_proj)
         q_projected = query @ state.projection.T
 
-        # Estimate: γ · Σᵢ q_proj[i] · sign[i]
-        # (N_q, n_proj) @ (N_kv, n_proj).T → (N_q, N_kv)
-        estimates = state.gamma * (q_projected @ state.signs.T)
+        # Estimate: (N_q, n_proj) @ (N_kv, n_proj).T → (N_q, N_kv)
+        # Then multiply column-wise by the per-vector gamma (shape 1, N_kv)
+        estimates = (q_projected @ state.signs.T) * state.gamma.T
 
         return estimates.squeeze()
 
