@@ -1,0 +1,25 @@
+# TurboQuant — Local LLM with KV Cache Compression
+# Install: pip install -r requirements.txt
+
+# Core math
+numpy
+scipy
+torch
+
+# HuggingFace (for HuggingFace backend)
+transformers
+accelerate
+huggingface-hub
+sentencepiece
+protobuf
+
+# 4-bit weight quantization (NVIDIA only, optional but recommended)
+# Only install if you have NVIDIA GPU:
+# bitsandbytes
+
+# Ollama Python client (for Ollama backend)
+ollama
+
+# Utilities
+tqdm
+rich
