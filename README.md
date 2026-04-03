@@ -223,8 +223,8 @@ in 8GB unified memory even at extended context lengths.
 ---
 
 ## References
-
+- [Understanding TurboQuant](https://medium.com/data-science-collective/turboquant-how-google-made-it-possible-to-run-huge-models-locally-099b6b501517)
 - [TurboQuant Paper (ICLR 2026)](https://openreview.net/pdf/6593f484501e295cdbe7efcbc46d7f20fc7e741f.pdf)
 - [Google Research Blog](https://research.google/blog/turboquant-redefining-ai-efficiency-with-extreme-compression/)
-- [TurboQuantMSE (AISTATS 2026)](https://arxiv.org/abs/2502.02617)
+- [Polar Quant](https://arxiv.org/abs/2502.02617)
 - [QJL (AAAI 2025)](https://dl.acm.org/doi/10.1609/aaai.v39i18.34037)
