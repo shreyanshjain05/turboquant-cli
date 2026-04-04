@@ -113,21 +113,22 @@ class TurboQuantizer:
         if x.ndim == 1:
             x = x[np.newaxis, :]
 
-        # ── Stage 1: TurboQuantMSE ──────────────────────────────────────
+        # Stage 1
         pq_state = self.turboquant_mse.quantize(x)
+        x_base   = self.turboquant_mse.dequantize(pq_state)   # full-scale reconstruction
 
-        # Reconstruct X_Base to compute residual
-        x_base = self.turboquant_mse.dequantize(pq_state)   # (N, dim)
+        # Compute residual in unit-sphere space (paper §3.2: QJL applied to unit-sphere residual)
+        # The norm is already stored in pq_state.norms from Stage 1
+        norms = pq_state.norms  # shape (N, 1)
+        safe_norms = np.where(norms < 1e-8, 1.0, norms)
 
-        # ── Compute residual on unit sphere (normalised space) ───────
-        # QJL works best on normalised residuals — scale-invariant
-        norms = pq_state.norms if pq_state.norms is not None else np.ones((x.shape[0], 1), dtype=np.float32)
-        x_unit  = x / np.where(norms < 1e-8, 1.0, norms)
-        xb_unit = x_base / np.where(norms < 1e-8, 1.0, norms)
-        residual = x_unit - xb_unit   # residual on unit sphere
+        x_unit  = x      / safe_norms   # unit vectors
+        xb_unit = x_base / safe_norms   # unit reconstruction
 
-        # ── Stage 2: QJL on the residual ────────────────────────────
-        qjl_state = self.qjl.compress(residual)
+        residual_unit = x_unit - xb_unit   # small-norm residual on unit sphere ← what QJL expects
+
+        # Stage 2: QJL on unit-sphere residual
+        qjl_state = self.qjl.compress(residual_unit)
 
         return TurboQuantState(
             pq_state=pq_state,
@@ -149,21 +150,19 @@ class TurboQuantizer:
         Returns:
             Reconstructed vectors, shape matching original input
         """
-        # Reconstruct X_Base from TurboQuantMSE
         x_base = self.turboquant_mse.dequantize(state.pq_state)
 
-        # Reconstruct approximate residual from QJL
-        x_residual = self.qjl.reconstruct_residual(state.qjl_state)
+        # Stage 2: reconstruct unit-sphere residual, then scale back up
+        residual_unit = self.qjl.reconstruct_residual(state.qjl_state)  # unit-sphere scale
+        norms = state.pq_state.norms  # (N, 1)
+        safe_norms = np.where(norms < 1e-8, 1.0, norms)
+        x_residual = residual_unit * safe_norms   # back to full scale
 
-        # x̃ = X_Base + X_residual
         reconstructed = x_base + x_residual
         return reconstructed.reshape(state.original_shape).astype(state.dtype)
+        
+    def attention_score(self, query: np.ndarray, state: TurboQuantState) -> np.ndarray:
 
-    def attention_score(
-        self,
-        query: np.ndarray,
-        state: TurboQuantState,
-    ) -> np.ndarray:
         """
         Compute attention scores WITHOUT full decompression.
 
@@ -181,12 +180,18 @@ class TurboQuantizer:
         if query.ndim == 1:
             query = query[np.newaxis, :]
 
-        # Term 1: ⟨q, X_Base⟩ using reconstructed TurboQuantMSE vectors
-        x_base = self.turboquant_mse.dequantize(state.pq_state)   # (N_kv, dim)
+        # Term 1: ⟨q, X_Base⟩ — full scale, no change
+        x_base = self.turboquant_mse.dequantize(state.pq_state)
         score_base = query @ x_base.T   # (N_q, N_kv)
 
-        # Term 2: unbiased QJL estimate of ⟨q, residual⟩
-        score_residual = self.qjl.estimate_inner_product(query, state.qjl_state)
+        # Term 2: QJL estimate of ⟨q, residual⟩ 
+        # QJL state holds the unit-sphere residual, so we must scale its
+        # output by the per-vector norms to recover full-scale inner products
+        norms = state.pq_state.norms   # (N_kv, 1)
+        safe_norms = np.where(norms < 1e-8, 1.0, norms).T   # (1, N_kv)
+
+        score_residual = self.qjl.estimate_inner_product(query, state.qjl_state)  # (N_q, N_kv)
+        score_residual = score_residual * safe_norms
 
         return score_base + score_residual
 
