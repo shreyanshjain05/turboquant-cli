@@ -404,7 +404,7 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="microsoft/Phi-3-mini-4k-instruct",
+        default="mistralai/Mistral-7B-Instruct-v0.3",
         help="Model for real KV extraction",
     )
     args = parser.parse_args()
@@ -425,7 +425,7 @@ def main():
         print("\n  Skipped. Run with --real to test on actual model KV vectors.")
         print("  Example:")
         print("    python benchmark.py --real --backend huggingface \\")
-        print("      --model microsoft/Phi-3-mini-4k-instruct")
+        print("      --model mistralai/Mistral-7B-Instruct-v0.3")
 
     # Memory projection (always runs)
     run_memory_projection()

@@ -113,7 +113,7 @@ python main.py --no-compress
 python main.py --context 16384
 
 # HuggingFace backend (full KV cache hook, more control)
-python main.py --backend huggingface --model microsoft/Phi-3-mini-4k-instruct
+python main.py --backend huggingface --model mistralai/Mistral-7B-Instruct-v0.3
 ```
 
 ---
@@ -187,7 +187,7 @@ To check the compression quality and ratio against a real HuggingFace model's KV
 ```bash
 python benchmark.py --real \
   --backend huggingface \
-  --model microsoft/Phi-3-mini-4k-instruct
+  --model mistralai/Mistral-7B-Instruct-v0.3
 ```
 
 ---

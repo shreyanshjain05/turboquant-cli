@@ -54,7 +54,7 @@ def load_huggingface_model(
     Load a HuggingFace model with optional 4-bit weight quantization.
 
     Best models for 8GB RAM (after 4-bit weight quant + TurboQuant KV):
-      "microsoft/Phi-3-mini-4k-instruct"    — 3.8B, ~2.3GB, very fast
+      "mistralai/Mistral-7B-Instruct-v0.3"    — 3.8B, ~2.3GB, very fast
       "google/gemma-2-2b-it"                — 2B,   ~1.5GB, good quality
       "mistralai/Mistral-7B-Instruct-v0.3"  — 7B,   ~4GB,   best quality
       "meta-llama/Llama-3.2-3B-Instruct"   — 3B,   ~2GB,   needs HF token

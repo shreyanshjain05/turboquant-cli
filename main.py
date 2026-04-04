@@ -9,7 +9,7 @@ Quick start:
     python main.py
 
     # With HuggingFace:
-    python main.py --backend huggingface --model microsoft/Phi-3-mini-4k-instruct
+    python main.py --backend huggingface --model mistralai/Mistral-7B-Instruct-v0.3
 
     # Change compression:
     python main.py --bits 3   # more compression, slightly lower quality
@@ -68,7 +68,7 @@ def parse_args():
         default=None,
         help=(
             "Model name. Ollama: 'mistral', 'phi3', 'gemma2:2b'. "
-            "HuggingFace: 'microsoft/Phi-3-mini-4k-instruct'"
+            "HuggingFace: 'mistralai/Mistral-7B-Instruct-v0.3'"
         ),
     )
     parser.add_argument(

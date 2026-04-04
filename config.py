@@ -23,7 +23,7 @@ class TurboQuantConfig:
     ollama_model: str = "llama3"
 
     # HuggingFace fallback (good for Apple Silicon)
-    hf_model_id: str = "microsoft/Phi-3-mini-4k-instruct"
+    hf_model_id: str = "mistralai/Mistral-7B-Instruct-v0.3"
     hf_token: Optional[str] = None
 
     # Apple Silicon: no bitsandbytes — use MPS + FP16 instead

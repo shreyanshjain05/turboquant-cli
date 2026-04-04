@@ -130,7 +130,6 @@ Good models for 8GB Apple Silicon (no bitsandbytes needed):
 
 | Model ID | Size | Speed | Quality | Notes |
 |---|---|---|---|---|
-| `microsoft/Phi-3-mini-4k-instruct` | ~2.3GB | Fast | Good | Best for 8GB |
 | `google/gemma-2-2b-it` | ~1.6GB | Very fast | Good | Lightest option |
 | `mistralai/Mistral-7B-Instruct-v0.3` | ~14GB FP16 | Medium | Excellent | Needs quantization |
 | `meta-llama/Llama-3.2-3B-Instruct` | ~6GB | Fast | Very good | Needs HF token |
@@ -153,21 +152,12 @@ Required for gated models like Llama 3.2:
 # Phi-3 Mini (recommended for 8GB Mac, no token needed)
 python main.py \
   --backend huggingface \
-  --model microsoft/Phi-3-mini-4k-instruct
+  --model mistralai/Mistral-7B-Instruct-v0.3
 
-# Llama 3.2 3B (needs HF token)
+#can run on google colab free tier T4 GPU
 python main.py \
   --backend huggingface \
-  --model meta-llama/Llama-3.2-3B-Instruct \
-  --hf-token hf_your_token_here
-
-# With custom settings
-python main.py \
-  --backend huggingface \
-  --model microsoft/Phi-3-mini-4k-instruct \
-  --bits 4 \
-  --context 8192 \
-  --temperature 0.7
+  --model mistralai/Mistral-7B-Instruct-v0.3
 ```
 
 ### What HuggingFace backend does differently
@@ -231,7 +221,7 @@ Output:
 python benchmark.py \
   --real \
   --backend huggingface \
-  --model microsoft/Phi-3-mini-4k-instruct
+  --model mistralai/Mistral-7B-Instruct-v0.3
 ```
 
 This:
@@ -306,7 +296,7 @@ class TurboQuantConfig:
 
     backend: str = "ollama"         # "ollama" or "huggingface"
     ollama_model: str = "llama3"    # any ollama pull-ed model name
-    hf_model_id: str = "microsoft/Phi-3-mini-4k-instruct"
+    hf_model_id: str = "mistralai/Mistral-7B-Instruct-v0.3"
     hf_token: str = None            # HuggingFace token for gated models
 
     max_new_tokens: int = 512
@@ -331,7 +321,7 @@ Pull the model first: `ollama pull llama3`
 ### Out of memory with HuggingFace 7B model on 8GB Mac
 Use a smaller model:
 ```bash
-python main.py --backend huggingface --model microsoft/Phi-3-mini-4k-instruct
+python main.py --backend huggingface --model mistralai/Mistral-7B-Instruct-v0.3
 ```
 Or reduce context:
 ```bash
@@ -378,13 +368,13 @@ python main.py                        # terminal 2
 # HuggingFace (full KV hooks)
 python main.py \
   --backend huggingface \
-  --model microsoft/Phi-3-mini-4k-instruct
+  --model mistralai/Mistral-7B-Instruct-v0.3
 
 # Benchmark
 python benchmark.py                   # synthetic (fast)
 python benchmark.py --real \          # real KV vectors
   --backend huggingface \
-  --model microsoft/Phi-3-mini-4k-instruct
+  mistralai/Mistral-7B-Instruct-v0.3
 
 # Common flags
 --bits 4          # compression level (2/3/4)
