@@ -221,6 +221,7 @@ class HuggingFaceInference:
             skip_special_tokens=True,
         )
 
+        from transformers import DynamicCache
         gen_kwargs = {
             **inputs,
             "max_new_tokens": max_new_tokens,
@@ -240,6 +241,7 @@ class HuggingFaceInference:
 
     def _batch_generate(self, inputs, max_new_tokens, temperature) -> str:
         """Non-streaming generation."""
+        from transformers import DynamicCache
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -248,7 +250,6 @@ class HuggingFaceInference:
                 do_sample=temperature > 0,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
-
         input_len = inputs["input_ids"].shape[1]
         new_tokens = outputs[0][input_len:]
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True)

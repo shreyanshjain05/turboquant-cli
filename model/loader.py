@@ -137,23 +137,28 @@ def load_huggingface_model(
         model_id, token=hf_token, trust_remote_code=True,
     )
     if getattr(config, "rope_scaling", None) is not None:
-        rs = config.rope_scaling
-        scaling_type = rs.get("rope_type", rs.get("type", None))
+            rs = config.rope_scaling
+            scaling_type = rs.get("rope_type", rs.get("type", None))
 
-        if scaling_type in ("default", None):
-            # "default" means no actual scaling — clear it so custom model code
-            # that doesn't recognise "default" uses standard RoPE instead.
-            config.rope_scaling = None
-            logger.info("Cleared rope_scaling (type='default' → None for standard RoPE)")
-        else:
-            # Real scaling (e.g. "longrope", "su") — ensure both key names exist
-            if "type" not in rs:
-                rs["type"] = scaling_type
-            if "rope_type" not in rs:
-                rs["rope_type"] = scaling_type
-            config.rope_scaling = rs
-            logger.info(f"Patched rope_scaling: ensured both keys for type='{scaling_type}'")
-    model_kwargs["config"] = config
+            if scaling_type in ("default", None):
+                # Only clear rope_scaling for models that use custom modeling code
+                # (e.g. Phi-3). Standard transformers models (LLaMA, TinyLlama)
+                # derive rope_parameters from rope_scaling — clearing it breaks them.
+                if getattr(config, "model_type", "") in ("phi3",):
+                    config.rope_scaling = None
+                    logger.info("Cleared rope_scaling (type='default' → None for standard RoPE)")
+                else:
+                    # Ensure both key names exist for standard models
+                    rs["type"] = scaling_type or "default"
+                    rs["rope_type"] = scaling_type or "default"
+                    config.rope_scaling = rs
+            else:
+                if "type" not in rs:
+                    rs["type"] = scaling_type
+                if "rope_type" not in rs:
+                    rs["rope_type"] = scaling_type
+                config.rope_scaling = rs
+                logger.info(f"Patched rope_scaling: ensured both keys for type='{scaling_type}'")
     # ────────────────────────────────────────────────────────────────
 
     model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
