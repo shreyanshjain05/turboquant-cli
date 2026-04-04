@@ -127,13 +127,15 @@ class TurboQuantMSE:
         if x.ndim == 1:
             x = x[np.newaxis, :]   # (1, dim)
 
+        x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+
         # Step 1: Store per-vector norms for reconstruction
         # TurboQuantMSE works on the unit sphere — we normalise first,
         # quantise the direction, then restore magnitude on decompress.
         # This is the key fix for outlier spikes: the rotation spreads
         # direction energy evenly, and the norm is stored separately (losslessly).
         norms = np.linalg.norm(x, axis=1, keepdims=True).astype(np.float32)
-        norms = np.where(norms < 1e-8, 1.0, norms)   # avoid div-by-zero
+        norms = np.where(np.isnan(norms) | np.isinf(norms) | (norms < 1e-3), 1.0, norms)   # avoid div-by-zero; 1e-3 needed for Phi-3's tighter value range
         x_unit = x / norms   # unit vectors on the sphere
 
         # Step 2: Random rotation — after normalisation, each coordinate

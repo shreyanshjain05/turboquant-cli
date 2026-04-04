@@ -24,10 +24,13 @@ Memory impact at 4-bit TurboQuant:
 
 import torch
 import numpy as np
+import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 
 from core.turboquant import TurboQuantizer, TurboQuantState
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -70,7 +73,10 @@ class TurboQuantKVCache:
         self.seed = seed
         self._quantizers: Dict[int, TurboQuantizer] = {}
         self._cache: Dict[int, CompressedKVCache] = {}
+        # Cumulative stats — intentionally NOT reset on clear() so that
+        # /stats shows totals across the whole session, not just the last turn.
         self._stats = {"compressed_mb": 0.0, "original_mb": 0.0, "n_tokens": 0}
+        self._first_compression_logged = False
 
     def _get_quantizer(self, head_dim: int) -> TurboQuantizer:
         """Lazily create quantizer for a given head dimension."""
@@ -129,6 +135,14 @@ class TurboQuantKVCache:
         self._stats["compressed_mb"] += compressed_mb
         self._stats["n_tokens"] += seq_len
 
+        if not self._first_compression_logged:
+            logger.info(
+                f"TurboQuant compressing: layer={layer_idx}, "
+                f"shape={tuple(key_states.shape)}, "
+                f"fp16={fp16_mb:.4f}MB → compressed={compressed_mb:.4f}MB"
+            )
+            self._first_compression_logged = True
+
         # Decompress for this forward pass
         k_reconstructed = tq.decompress_tensor(
             k_state, device=key_states.device, dtype=key_states.dtype
@@ -137,6 +151,10 @@ class TurboQuantKVCache:
         v_reconstructed = tq.decompress_tensor(
             v_state, device=value_states.device, dtype=value_states.dtype
         ).reshape(batch, n_heads, seq_len, head_dim)
+
+        # Sanitize: NaN/inf here poisons attention logits → CUDA assert crash on Phi-3
+        k_reconstructed = torch.nan_to_num(k_reconstructed, nan=0.0, posinf=0.0, neginf=0.0).clamp(-100.0, 100.0)
+        v_reconstructed = torch.nan_to_num(v_reconstructed, nan=0.0, posinf=0.0, neginf=0.0).clamp(-100.0, 100.0)
 
         return k_reconstructed, v_reconstructed
 
@@ -172,7 +190,15 @@ class TurboQuantKVCache:
         return torch.cat(all_keys, dim=0), torch.cat(all_vals, dim=0)
 
     def clear(self):
-        """Clear the cache (between conversations)."""
+        """Clear the cached tensors only (between turns/conversations).
+
+        Cumulative stats are preserved so /stats keeps showing session totals.
+        Call reset_stats() explicitly if you want to wipe everything.
+        """
+        self._cache.clear()
+
+    def reset_stats(self):
+        """Reset both the cache AND the cumulative statistics."""
         self._cache.clear()
         self._stats = {"compressed_mb": 0.0, "original_mb": 0.0, "n_tokens": 0}
 

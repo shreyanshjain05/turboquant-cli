@@ -8,10 +8,12 @@ torch
 
 # HuggingFace (for HuggingFace backend)
 transformers
+flash-attention
 accelerate
 huggingface-hub
 sentencepiece
 protobuf
+bitsandbytes
 
 # 4-bit weight quantization (NVIDIA only, optional but recommended)
 # Only install if you have NVIDIA GPU:

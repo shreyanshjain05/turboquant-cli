@@ -45,11 +45,10 @@ about uncertainty. For technical questions, you explain your reasoning."""
 
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
-║           TurboQuant Local LLM                       ║
-║      KV Cache Compression — ICLR 2026                ║
+║                  TurboQuant                          ║
+║           Local LLM  KV Cache Compression            ║
 ╠══════════════════════════════════════════════════════╣
-║  Google Research • TurboQuantMSE + QJL Pipeline         ║
-║  6x memory reduction • Zero accuracy loss            ║
+║  Google Research • TurboQuantMSE + QJL Pipeline      ║     
 ╚══════════════════════════════════════════════════════╝
 """
 
@@ -187,7 +186,7 @@ def chat_loop(engine, backend: str):
                 if isinstance(engine, OllamaInference):
                     engine.clear_history()
                 elif isinstance(engine, HuggingFaceInference):
-                    engine.kv_cache.clear()
+                    engine.kv_cache.reset_stats()
                 print("  Conversation cleared.")
                 continue
 

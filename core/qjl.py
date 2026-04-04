@@ -100,6 +100,8 @@ class QJL:
         """
         if residual.ndim == 1:
             residual = residual[np.newaxis, :]
+            
+        residual = np.nan_to_num(residual, nan=0.0, posinf=0.0, neginf=0.0)
 
         # Project residual into JL space: (N, n_proj)
         projected = residual @ self.projection.T
@@ -111,6 +113,7 @@ class QJL:
         # Gamma: per-vector scaling factor that calibrates the estimator
         # Derived from the mean magnitude of the residual projections
         gamma = np.linalg.norm(residual, axis=1, keepdims=True).astype(np.float32)
+        gamma = np.nan_to_num(gamma, nan=0.0)
 
         return QJLState(
             signs=signs,

@@ -112,6 +112,8 @@ class TurboQuantizer:
 
         if x.ndim == 1:
             x = x[np.newaxis, :]
+            
+        x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
 
         # Stage 1
         pq_state = self.turboquant_mse.quantize(x)
@@ -120,12 +122,14 @@ class TurboQuantizer:
         # Compute residual in unit-sphere space (paper §3.2: QJL applied to unit-sphere residual)
         # The norm is already stored in pq_state.norms from Stage 1
         norms = pq_state.norms  # shape (N, 1)
-        safe_norms = np.where(norms < 1e-8, 1.0, norms)
+        safe_norms = np.where(np.isnan(norms) | np.isinf(norms) | (norms < 1e-8), 1.0, norms)
 
         x_unit  = x      / safe_norms   # unit vectors
         xb_unit = x_base / safe_norms   # unit reconstruction
 
         residual_unit = x_unit - xb_unit   # small-norm residual on unit sphere ← what QJL expects
+        residual_unit = np.clip(residual_unit, -2.0, 2.0)   # cap before QJL; Phi-3 outliers can blow this up
+        residual_unit = np.nan_to_num(residual_unit, nan=0.0)
 
         # Stage 2: QJL on unit-sphere residual
         qjl_state = self.qjl.compress(residual_unit)
@@ -155,10 +159,18 @@ class TurboQuantizer:
         # Stage 2: reconstruct unit-sphere residual, then scale back up
         residual_unit = self.qjl.reconstruct_residual(state.qjl_state)  # unit-sphere scale
         norms = state.pq_state.norms  # (N, 1)
-        safe_norms = np.where(norms < 1e-8, 1.0, norms)
+        safe_norms = np.where(np.isnan(norms) | np.isinf(norms) | (norms < 1e-8), 1.0, norms)
         x_residual = residual_unit * safe_norms   # back to full scale
 
         reconstructed = x_base + x_residual
+        
+        # Sanitize any unexpected NaNs
+        reconstructed = np.nan_to_num(reconstructed, nan=0.0)
+        
+        # Clamp to avoid overflow when casting back to float16
+        if state.dtype == np.float16:
+            reconstructed = np.clip(reconstructed, -65500.0, 65500.0)
+
         return reconstructed.reshape(state.original_shape).astype(state.dtype)
         
     def attention_score(self, query: np.ndarray, state: TurboQuantState) -> np.ndarray:
@@ -188,9 +200,10 @@ class TurboQuantizer:
         # QJL state holds the unit-sphere residual, so we must scale its
         # output by the per-vector norms to recover full-scale inner products
         norms = state.pq_state.norms   # (N_kv, 1)
-        safe_norms = np.where(norms < 1e-8, 1.0, norms).T   # (1, N_kv)
+        safe_norms = np.where(np.isnan(norms) | np.isinf(norms) | (norms < 1e-8), 1.0, norms).T   # (1, N_kv)
 
         score_residual = self.qjl.estimate_inner_product(query, state.qjl_state)  # (N_q, N_kv)
+        score_residual = np.nan_to_num(score_residual, nan=0.0)
         score_residual = score_residual * safe_norms
 
         return score_base + score_residual
@@ -211,6 +224,11 @@ class TurboQuantizer:
         t = torch.from_numpy(reconstructed_np.astype(np.float32))
         if device is not None:
             t = t.to(device)
+            
+        # Protect against float16 inf explosion
+        if dtype == torch.float16:
+            t = torch.clamp(t, min=-65500.0, max=65500.0)
+            
         return t.to(dtype)
 
     def compression_stats(

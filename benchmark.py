@@ -125,6 +125,31 @@ def extract_kv_from_huggingface(model_id: str, prompt: str) -> dict:
     try:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
+        try:
+            from transformers.cache_utils import DynamicCache
+            if not hasattr(DynamicCache, "from_legacy_cache"):
+                @classmethod
+                def _from_legacy_cache(cls, past_key_values, *args, **kwargs):
+                    cache = cls()
+                    if past_key_values is None:
+                        return cache
+                    for layer_idx in range(len(past_key_values)):
+                        key_states, value_states = past_key_values[layer_idx]
+                        cache.update(key_states, value_states, layer_idx)
+                    return cache
+                DynamicCache.from_legacy_cache = _from_legacy_cache
+            if not hasattr(DynamicCache, "get_usable_length"):
+                DynamicCache.get_usable_length = lambda self, new_seq_length, layer_idx=0: self.get_seq_length(layer_idx)
+            if not hasattr(DynamicCache, "to_legacy_cache"):
+                def _to_legacy_cache(self):
+                    legacy_cache = ()
+                    for layer in self.layers:
+                        # Some implementations might use key_cache/value_cache instead of layers
+                        legacy_cache += ((layer.keys, layer.values),)
+                    return legacy_cache
+                DynamicCache.to_legacy_cache = _to_legacy_cache
+        except ImportError:
+            pass
     except ImportError:
         raise ImportError("pip install transformers torch")
 
@@ -151,7 +176,7 @@ def extract_kv_from_huggingface(model_id: str, prompt: str) -> dict:
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         config=config,
-        dtype=torch.float32,
+        torch_dtype=torch.float32,
         device_map="auto",
         trust_remote_code=True,
     )
@@ -164,7 +189,7 @@ def extract_kv_from_huggingface(model_id: str, prompt: str) -> dict:
 
     # Forward pass
     with torch.no_grad():
-        outputs = model(**inputs, output_attentions=False, use_cache=True)
+        outputs = model(**inputs, output_attentions=False, use_cache=True)  
 
     if not hasattr(outputs, "past_key_values") or outputs.past_key_values is None:
         raise ValueError("Model did not return past_key_values. KV cache extraction failed.")

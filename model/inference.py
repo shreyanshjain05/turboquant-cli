@@ -59,59 +59,108 @@ class HuggingFaceInference:
 
     def _patch_attention_layers(self):
         """
-        Register forward hooks on each attention layer.
-        Supports: LlamaAttention, MistralAttention, GemmaAttention,
-                  PhiAttention, and most HF transformer attention modules.
+        Install KV interception. Two strategies, tried in order:
+
+        1. DynamicCache patch (transformers ≥4.36): monkey-patch DynamicCache.update()
+           so every key/value write goes through TurboQuant first.
+           This is the modern path — past_key_value is passed as INPUT to attention
+           and mutated in-place, never returned in the output tuple.
+
+        2. Output hook fallback (transformers ≤4.35): register forward hooks on
+           attention layers and intercept the (k, v) tuple in the output.
         """
+        if self._try_patch_dynamic_cache():
+            return
+
+        # ── Fallback: legacy output-hook approach ──────────────────────
         layer_idx = 0
         for name, module in self.model.named_modules():
-            # Target attention modules (covers most HF architectures)
             module_name = type(module).__name__.lower()
             if "attention" in module_name and hasattr(module, "forward"):
                 hook = self._make_kv_hook(layer_idx)
                 handle = module.register_forward_hook(hook)
                 self._hooks.append(handle)
                 layer_idx += 1
+        logger.info(f"TurboQuant hooks registered on {layer_idx} attention layers (legacy mode)")
 
-        logger.info(f"TurboQuant hooks registered on {layer_idx} attention layers")
+    def _try_patch_dynamic_cache(self) -> bool:
+        """
+        Patch DynamicCache.update() to compress KV pairs before they are stored.
+
+        Returns True if patching succeeded, False if DynamicCache is unavailable
+        (i.e. old transformers that use the legacy tuple cache).
+        """
+        try:
+            from transformers.cache_utils import DynamicCache
+        except ImportError:
+            logger.info("DynamicCache not found — falling back to legacy hook mode")
+            return False
+
+        kv_cache = self.kv_cache
+        original_update = DynamicCache.update
+
+        def patched_update(cache_self, key_states, value_states, layer_idx, cache_kwargs=None):
+            """Compress KV before writing to cache, track stats."""
+            try:
+                k_c, v_c = kv_cache.update(key_states, value_states, layer_idx)
+                return original_update(cache_self, k_c, v_c, layer_idx, cache_kwargs)
+            except Exception as e:
+                logger.debug(f"TurboQuant layer {layer_idx} compression error: {e}")
+                return original_update(cache_self, key_states, value_states, layer_idx, cache_kwargs)
+
+        DynamicCache.update = patched_update
+        self._original_dynamic_cache_update = (DynamicCache, original_update)
+        logger.info("TurboQuant active: patched DynamicCache.update() for KV compression")
+        return True
 
     def _make_kv_hook(self, layer_idx: int):
         """
-        Create a forward hook for a specific attention layer.
-        The hook intercepts the module's output and compresses
-        the KV states inside it.
+        Legacy forward hook for transformers ≤4.35 where past_key_value
+        is returned as a (k, v) tuple in the attention output.
         """
         kv_cache = self.kv_cache
 
         def hook(module, input, output):
-            # HuggingFace attention outputs vary by architecture
-            # Most return (attn_output, attn_weights, past_key_value)
-            # We target the past_key_value tuple
-            if isinstance(output, tuple) and len(output) >= 3:
-                past_kv = output[2]
-                if past_kv is not None and isinstance(past_kv, tuple):
-                    k, v = past_kv[0], past_kv[1]
-                    if k is not None and v is not None:
-                        try:
-                            k_compressed, v_compressed = kv_cache.update(
-                                k, v, layer_idx
-                            )
-                            # Return with compressed KV
-                            new_output = list(output)
-                            new_output[2] = (k_compressed, v_compressed)
-                            return tuple(new_output)
-                        except Exception as e:
-                            logger.debug(f"KV compression failed on layer {layer_idx}: {e}")
+            if not isinstance(output, tuple):
+                return output
+
+            for idx in range(len(output) - 1, -1, -1):
+                candidate = output[idx]
+                if candidate is None:
+                    continue
+                if (isinstance(candidate, tuple)
+                        and len(candidate) == 2
+                        and isinstance(candidate[0], torch.Tensor)
+                        and isinstance(candidate[1], torch.Tensor)
+                        and candidate[0].ndim == 4):
+                    k, v = candidate
+                    try:
+                        k_c, v_c = kv_cache.update(k, v, layer_idx)
+                        new_out = list(output)
+                        new_out[idx] = (k_c, v_c)
+                        return tuple(new_out)
+                    except Exception as e:
+                        logger.debug(f"Layer {layer_idx} hook error: {e}")
+                    return output
+
             return output
 
         return hook
 
+
+
+
     def remove_hooks(self):
-        """Remove all TurboQuant hooks (restores original model)."""
+        """Remove all TurboQuant hooks and restore original DynamicCache (if patched)."""
         for handle in self._hooks:
             handle.remove()
         self._hooks.clear()
+        if hasattr(self, "_original_dynamic_cache_update"):
+            CacheClass, original_fn = self._original_dynamic_cache_update
+            CacheClass.update = original_fn
+            del self._original_dynamic_cache_update
         logger.info("TurboQuant hooks removed")
+
 
     def generate(
         self,
