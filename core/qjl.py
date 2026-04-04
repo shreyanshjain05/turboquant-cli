@@ -110,7 +110,7 @@ class QJL:
 
         # Gamma: per-vector scaling factor that calibrates the estimator
         # Derived from the mean magnitude of the residual projections
-        gamma = np.mean(np.abs(projected), axis=1, keepdims=True).astype(np.float32)
+        gamma = np.linalg.norm(residual, axis=1, keepdims=True).astype(np.float32)
 
         return QJLState(
             signs=signs,
@@ -145,7 +145,8 @@ class QJL:
 
         # Estimate: (N_q, n_proj) @ (N_kv, n_proj).T → (N_q, N_kv)
         # Then multiply column-wise by the per-vector gamma (shape 1, N_kv)
-        estimates = (q_projected @ state.signs.T) * state.gamma.T
+        scale = np.sqrt(np.pi / 2) / self.dim
+        estimates = scale * (q_projected @ state.signs.T) * state.gamma.T
 
         return estimates.squeeze()
 
@@ -157,9 +158,11 @@ class QJL:
         Returns:
             Approximate residual, shape (N, dim)
         """
-        # Scale signs by gamma and project back: (N, n_proj) @ (n_proj, dim)
-        return state.gamma * (state.signs.astype(np.float32) @ state.projection)
-
+        # state.projection is (n_proj, dim), already scaled by 1/√n_proj
+        # For paper-exact: scale = √(π/2) / dim
+        scale = np.sqrt(np.pi / 2) / self.dim
+        return scale * state.gamma * (state.signs.astype(np.float32) @ state.projection)
+    
     def memory_bits_per_vector(self) -> int:
         """Bits used by QJL per original vector (1 bit per projection)."""
         return self.n_proj   # 1 bit × n_proj
